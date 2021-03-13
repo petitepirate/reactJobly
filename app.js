@@ -1,47 +1,50 @@
-"use strict";
-
 /** Express app for jobly. */
 
+
 const express = require("express");
+const app = express();
 const cors = require("cors");
+app.use(express.json());
+app.use(cors());
 
-const { NotFoundError } = require("./expressError");
-
-const { authenticateJWT } = require("./middleware/auth");
-const authRoutes = require("./routes/auth");
-const companiesRoutes = require("./routes/companies");
-const usersRoutes = require("./routes/users");
-const jobsRoutes = require("./routes/jobs");
+// add logging system
 
 const morgan = require("morgan");
-
-const app = express();
-
-app.use(cors());
-app.use(express.json());
 app.use(morgan("tiny"));
-app.use(authenticateJWT);
 
-app.use("/auth", authRoutes);
+
+const usersRoutes = require("./routes/users");
+const companiesRoutes = require("./routes/companies");
+const jobsRoutes = require("./routes/jobs");
+const authRoutes = require("./routes/auth");
+
 app.use("/companies", companiesRoutes);
-app.use("/users", usersRoutes);
 app.use("/jobs", jobsRoutes);
+app.use("/users", usersRoutes);
+app.use("/", authRoutes);
 
+/** 404 handler */
 
-/** Handle 404 errors -- this matches everything */
 app.use(function (req, res, next) {
-  return next(new NotFoundError());
+  const err = new Error("Not Found");
+  err.status = 404;
+
+  // pass the error to the next piece of middleware
+  return next(err);
 });
 
-/** Generic error handler; anything unhandled goes here. */
-app.use(function (err, req, res, next) {
-  if (process.env.NODE_ENV !== "test") console.error(err.stack);
-  const status = err.status || 500;
-  const message = err.message;
+/** general error handler */
 
-  return res.status(status).json({
-    error: { message, status },
+app.use(function (err, req, res, next) {
+  if (err.stack) console.log(err.stack);
+
+  res.status(err.status || 500);
+
+  return res.json({
+    error: err,
+    message: err.message
   });
 });
+
 
 module.exports = app;

@@ -1,86 +1,101 @@
-"use strict";
-
 /** Convenience middleware to handle common auth cases in routes. */
 
+
 const jwt = require("jsonwebtoken");
-const { SECRET_KEY } = require("../config");
-const { UnauthorizedError } = require("../expressError");
+const {SECRET} = require("../config");
 
 
-/** Middleware: Authenticate user.
+/** Middleware to use when they must provide a valid token.
  *
- * If a token was provided, verify it, and, if valid, store the token payload
- * on res.locals (this will include the username and isAdmin field.)
- *
- * It's not an error if no token was provided or if the token is not valid.
- */
-
-function authenticateJWT(req, res, next) {
-  try {
-    const authHeader = req.headers && req.headers.authorization;
-    if (authHeader) {
-      const token = authHeader.replace(/^[Bb]earer /, "").trim();
-      res.locals.user = jwt.verify(token, SECRET_KEY);
-    }
-    return next();
-  } catch (err) {
-    return next();
-  }
-}
-
-/** Middleware to use when they must be logged in.
+ * Add username onto req as a convenience for view functions.
  *
  * If not, raises Unauthorized.
- */
-
-function ensureLoggedIn(req, res, next) {
-  try {
-    if (!res.locals.user) throw new UnauthorizedError();
-    return next();
-  } catch (err) {
-    return next(err);
-  }
-}
-
-
-/** Middleware to use when they be logged in as an admin user.
  *
- *  If not, raises Unauthorized.
  */
 
-function ensureAdmin(req, res, next) {
+function authRequired(req, res, next) {
   try {
-    if (!res.locals.user || !res.locals.user.isAdmin) {
-      throw new UnauthorizedError();
-    }
+    const tokenStr = req.body._token || req.query._token;
+    let token = jwt.verify(tokenStr, SECRET);
+    req.username = token.username;
     return next();
-  } catch (err) {
-    return next(err);
+  }
+
+  catch (err) {
+    let unauthorized = new Error("You must authenticate first.");
+    unauthorized.status = 401;  // 401 Unauthorized
+    return next(unauthorized);
   }
 }
+
+
+/** Middleware to use when they must provide a valid token that is an admin token.
+ *
+ * Add username onto req as a convenience for view functions.
+ *
+ * If not, raises Unauthorized.
+ *
+ */
+
+function adminRequired(req, res, next) {
+  try {
+    const tokenStr = req.body._token;
+
+    let token = jwt.verify(tokenStr, SECRET);
+    req.username = token.username;
+
+    if (token.is_admin) {
+      return next();
+    }
+
+    // throw an error, so we catch it in our catch, below
+    throw new Error();
+  }
+
+  catch (err) {
+    const unauthorized = new Error("You must be an admin to access.");
+    unauthorized.status = 401;
+
+    return next(unauthorized);
+  }
+}
+
 
 /** Middleware to use when they must provide a valid token & be user matching
  *  username provided as route param.
  *
- *  If not, raises Unauthorized.
+ * Add username onto req as a convenience for view functions.
+ *
+ * If not, raises Unauthorized.
+ *
  */
 
-function ensureCorrectUserOrAdmin(req, res, next) {
+function ensureCorrectUser(req, res, next) {
   try {
-    const user = res.locals.user;
-    if (!(user && (user.isAdmin || user.username === req.params.username))) {
-      throw new UnauthorizedError();
+    const tokenStr = req.body._token || req.query._token;
+
+    let token = jwt.verify(tokenStr, SECRET);
+    req.username = token.username;
+
+    if (token.username === req.params.username) {
+      return next();
     }
-    return next();
-  } catch (err) {
-    return next(err);
+
+    // throw an error, so we catch it in our catch, below
+    throw new Error();
+  }
+
+  catch (e) {
+    const unauthorized = new Error("You are not authorized.");
+    unauthorized.status = 401;
+
+    return next(unauthorized);
   }
 }
 
 
 module.exports = {
-  authenticateJWT,
-  ensureLoggedIn,
-  ensureAdmin,
-  ensureCorrectUserOrAdmin,
+  authRequired,
+  adminRequired,
+  ensureCorrectUser,
 };
